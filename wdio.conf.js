@@ -1,3 +1,6 @@
+const BrowserMob = require("browsermob-proxy-client");
+const fs = require("fs");
+
 exports.config = {
   user: process.env.BROWSERSTACK_USERNAME,
   key: process.env.BROWSERSTACK_ACCESS_KEY,
@@ -28,7 +31,7 @@ exports.config = {
     [
       "browserstack",
       {
-        app: "./nytimes.apk",
+        app: "./WikipediaSample.apk",
         browserstackLocal: true,
         opts: {
           forceLocal: "true",
@@ -37,8 +40,6 @@ exports.config = {
           forceProxy: true,
           force: true,
           localIdentifier: "RandomString",
-          useCaCertificate:
-            "/Users/abhi/Downloads/browsermob-proxy-2.1.4/ssl-support/ca-certificate-rsa.pem",
         },
       },
     ],
@@ -48,5 +49,31 @@ exports.config = {
   mochaOpts: {
     ui: "bdd",
     timeout: 60000,
+  },
+  onPrepare: async function (config, capabilities) {
+    var bmpClient = BrowserMob.createClient();
+    var proxyInfo = await bmpClient.start();
+    console.log(proxyInfo);
+    await bmpClient.createHar({
+      captureHeaders: true,
+      captureContent: true,
+      captureBinaryContent: false,
+      initialPageRef: true,
+      initialPageTitle: true,
+    });
+    process.env["PROXY_PORT"] = proxyInfo.port;
+  },
+  after: async function (result, capabilities, specs) {
+    var bmpClient = BrowserMob.createClient();
+    bmpClient
+      .callRest(`proxy/${process.env.PROXY_PORT}/har`, "GET")
+      .then((data) => {
+        var harJSON = JSON.stringify(data);
+        console.log(harJSON);
+        fs.writeFileSync("request.har", harJSON);
+        assert(harJSON.log.entries.length > 0);
+      });
+    await bmpClient.closeProxies();
+    await bmpClient.end();
   },
 };
